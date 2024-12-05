@@ -2,6 +2,8 @@ import asyncio
 from playwright.async_api import async_playwright, PlaywrightContextManager, Response
 from bs4 import BeautifulSoup
 import uuid
+import os 
+from urllib.parse import urlparse
 
 async def fetch(url,expectedResponse):
     async def fetchResponse():
@@ -21,8 +23,11 @@ async def fetch(url,expectedResponse):
 
 async def downloadAllImages(url):
     async def handle(response):
-        with open(f'{uuid.uuid4()}.png','wb') as f:
-            f.write(response.body)
+        if response.request.resource_type == "image":
+            urlstruct = urlparse(response.url)
+            filename = os.path.basename(urlstruct.path)
+            with open(filename,'wb') as f:
+                f.write(response.body())
 
     async with async_playwright() as session:
         browser = await session.chromium.launch()
@@ -34,9 +39,42 @@ async def getPageContentIntoBsp(url):
     async with async_playwright() as session:
         browser = await session.chromium.launch()
         page = await browser.new_page()
-        soup = BeautifulSoup(page.content(), 'html.parser')
+        soup = BeautifulSoup(await page.content(), 'html.parser')
         return soup
 
+
+async def getRequests(url,timeout=10.0):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+
+    async with async_playwright() as session:
+        browser = await session.chromium.lauch()
+        page = await browser.new_page()
+        page.on("request",handle)
+        await page.goto(url)
+        await page.wait_for_timeout(timeout)
+        return requests
+
+        
+
+async def getResponses(url,timeout=10.0):
+    requests = []
+
+    def handle(request):
+        requests.append(request)
+
+    async with async_playwright() as session:
+        browser = await session.chromium.lauch()
+        page = await browser.new_page()
+        page.on("response",handle)
+        await page.goto(url)
+        await page.wait_for_timeout(timeout)
+        return requests
+
+async def automateLogin(url):
+    pass
 
 async def main():
     # Go to mercari japan Pikachu ピカチュウ and intercept the response!
@@ -45,9 +83,9 @@ async def main():
     data = await fetch(url,intercept)
     print(data)    
 
-    await downloadAllImages(url)
+    # await downloadAllImages(url)
 
-    parsedBsp = await getPageContentIntoBsp()
+    parsedBsp = await getPageContentIntoBsp(url)
     print(parsedBsp)
 
 asyncio.run(main())
